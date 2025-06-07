@@ -1,0 +1,873 @@
+# Context
+Filename: plan.txt
+Created On: 2024-12-30
+Created By: AI Assistant
+Associated Protocol: RIPER-5 + Multidimensional + Agent Protocol
+
+# Task Description
+设计开发一个响应式面试题库web应用，要求在PC和移动端都有良好的交互效果。主要功能包括：
+1. 使用daisyUI collapse组件实现题目答案交互
+2. 数据按类别分组（如"Linux题"、"Python题"）
+3. 分类选择器固定在顶部
+4. 使用theme-controller组件支持明暗主题切换
+5. 支持在线编辑问题答案并保存到浏览器本地缓存
+6. 使用IndexDB第三方库管理本地数据存储
+
+# Project Overview
+当前项目基于Vue 3 + TypeScript + Vite + TailwindCSS + daisyUI技术栈：
+- Vue 3.5.13 作为前端框架
+- Vue Router 4.5.0 处理路由
+- TailwindCSS 4.1.8 + daisyUI 5.0.43 用于UI样式
+- TypeScript 支持类型安全
+- Vite 6.2.4 作为构建工具
+
+---
+*The following sections are maintained by the AI during protocol execution*
+---
+
+# Analysis (Populated by RESEARCH mode)
+
+## 技术栈分析
+当前项目已经配置了核心依赖：
+- ✅ Vue 3 + TypeScript 基础框架
+- ✅ TailwindCSS + daisyUI UI组件库 (已正确配置在main.css中)
+- ✅ Vite 现代构建工具
+- ✅ Vue Router 路由管理
+
+## 缺失依赖分析
+需要添加的第三方库：
+- 📋 IndexDB操作库（推荐 Dexie.js - 成熟易用的IndexDB封装库）
+- 📋 状态管理（考虑添加Pinia管理题库状态和主题状态）
+
+## 项目结构分析
+当前目录结构：
+```
+src/
+├── App.vue (基础路由容器 + daisyUI按钮示例)
+├── main.ts (应用入口)
+├── views/ (页面组件)
+├── components/ (通用组件)
+├── router/ (路由配置)
+├── assets/main.css (TailwindCSS + daisyUI样式配置)
+└── assets/ (静态资源)
+```
+
+## 核心功能需求分析
+
+### 1. 数据结构设计
+题库数据模型TypeScript接口定义：
+```typescript
+interface Category {
+  id: string;
+  name: string;  // "Linux题", "Python题"
+  description?: string;
+}
+
+interface Question {
+  id: string;
+  categoryId: string;
+  question: string;
+  answer: string;
+  isEdited: boolean;
+  editedAt?: Date;
+  originalQuestion?: string;
+  originalAnswer?: string;
+}
+
+interface UserEdit {
+  questionId: string;
+  editedQuestion: string;
+  editedAnswer: string;
+  editedAt: Date;
+}
+```
+
+### 1. 数据结构设计
+
+#### 原始数据格式分析（基于华为面试题JSON）
+```typescript
+// 原始JSON数据结构
+interface OriginalQuestionData {
+  id: number;
+  catalogId: number;
+  subject: string;        // 题目内容
+  answer: string;         // 答案内容
+  readCount: number;      // 阅读次数
+  createTime: number[];   // 创建时间数组 [年,月,日,时,分,秒]
+  updateTime: number[];   // 更新时间数组
+  optionStatus: number;   // 选项状态
+  catalogName: string | null;  // 分类名称
+  collect: boolean;       // 收藏状态
+}
+
+// 原始分类数据结构推导
+interface OriginalCatalogData {
+  id: number;
+  name: string;           // 分类名称
+  description?: string;
+}
+```
+
+#### 应用数据格式设计
+```typescript
+// 应用内使用的分类接口
+interface Category {
+  id: string;
+  name: string;           // "Linux题", "Python题", "华为软件测试题"
+  description?: string;
+  questionCount: number;  // 该分类下的题目数量
+  icon?: string;          // 分类图标
+}
+
+// 应用内使用的题目接口
+interface Question {
+  id: string;
+  categoryId: string;
+  subject: string;        // 题目内容
+  answer: string;         // 答案内容
+  readCount: number;      // 阅读次数
+  createTime: Date;       // 创建时间
+  updateTime: Date;       // 更新时间
+  isCollected: boolean;   // 收藏状态
+  
+  // 用户编辑相关
+  isEdited: boolean;
+  editedAt?: Date;
+  originalSubject?: string;
+  originalAnswer?: string;
+  
+  // UI状态
+  isExpanded: boolean;    // 是否展开答案
+  isBookmarked: boolean;  // 是否已收藏
+}
+
+// 用户编辑记录
+interface UserEdit {
+  questionId: string;
+  editedSubject: string;
+  editedAnswer: string;
+  editedAt: Date;
+  editType: 'subject' | 'answer' | 'both';
+}
+
+// 用户偏好设置
+interface UserPreferences {
+  selectedCategoryId: string;
+  theme: 'light' | 'dark' | 'auto';
+  autoExpandAnswers: boolean;
+  showReadCount: boolean;
+  compactMode: boolean;
+}
+
+// 应用状态接口
+interface InterviewBankState {
+  categories: Category[];
+  questions: Question[];
+  userEdits: UserEdit[];
+  preferences: UserPreferences;
+  currentCategoryId: string;
+  searchQuery: string;
+  isLoading: boolean;
+  error?: string;
+}
+```
+
+#### 数据转换方案
+```typescript
+// 数据转换工具函数
+interface DataTransformUtils {
+  // 时间数组转换为Date对象
+  arrayToDate: (timeArray: number[]) => Date;
+  
+  // 原始数据转换为应用数据
+  transformOriginalQuestion: (original: OriginalQuestionData) => Question;
+  
+  // 批量数据转换
+  transformQuestionsBatch: (original: OriginalQuestionData[]) => Question[];
+  
+  // 分类数据聚合
+  aggregateCategories: (questions: Question[]) => Category[];
+  
+  // 数据验证
+  validateQuestionData: (question: Question) => boolean;
+}
+```
+
+#### 数据存储方案（基于实际JSON数据）
+```typescript
+// 本地存储结构
+interface LocalStorageSchema {
+  // 原始数据缓存
+  originalData: {
+    questions: OriginalQuestionData[];
+    lastUpdated: Date;
+    version: string;
+  };
+  
+  // 用户数据
+  userData: {
+    edits: UserEdit[];
+    preferences: UserPreferences;
+    bookmarks: string[];  // 收藏的题目ID列表
+    readHistory: {
+      questionId: string;
+      lastRead: Date;
+      readCount: number;
+    }[];
+  };
+  
+  // 应用缓存
+  appCache: {
+    transformedQuestions: Question[];
+    categories: Category[];
+    lastProcessed: Date;
+  };
+}
+```
+
+#### 数据处理流程
+1. **数据加载**：从JSON文件加载原始华为面试题数据
+2. **数据转换**：将原始格式转换为应用内格式
+3. **分类聚合**：基于catalogId和catalogName生成分类列表
+4. **状态初始化**：设置默认的UI状态（折叠状态、选中分类等）
+5. **本地存储**：将转换后的数据存储到localStorage/IndexedDB
+6. **增量更新**：支持新数据的增量加载和合并
+
+#### 示例数据转换
+```typescript
+// 原始数据示例
+const originalData: OriginalQuestionData = {
+  id: 153,
+  catalogId: 16,
+  subject: "1、下面哪个Linux命令可以一次显示一页内容？",
+  answer: "A、pause\n\nB、cat\n\nC、more\n\nD、rep\n",
+  readCount: 820,
+  createTime: [2022, 6, 10, 9, 9, 40],
+  updateTime: [2022, 6, 10, 9, 9, 40],
+  optionStatus: 0,
+  catalogName: null,
+  collect: false
+};
+
+// 转换后的应用数据
+const transformedData: Question = {
+  id: "153",
+  categoryId: "16",
+  subject: "1、下面哪个Linux命令可以一次显示一页内容？",
+  answer: "A、pause\n\nB、cat\n\nC、more\n\nD、rep\n",
+  readCount: 820,
+  createTime: new Date(2022, 5, 10, 9, 9, 40), // 月份需要-1
+  updateTime: new Date(2022, 5, 10, 9, 9, 40),
+  isCollected: false,
+  isEdited: false,
+  isExpanded: false,
+  isBookmarked: false
+};
+```
+
+### 2. 组件架构分析
+需要创建的主要组件：
+- **InterviewBankView.vue** - 题库主页面视图
+- **CategoryTabs.vue** - 顶部固定分类选择器（使用daisyUI tabs）
+- **QuestionList.vue** - 题目列表容器（支持虚拟滚动）
+- **QuestionCard.vue** - 题目卡片（基于daisyUI collapse组件）
+- **ThemeToggle.vue** - 主题切换器（基于daisyUI theme-controller）
+- **EditModal.vue** - 编辑模态框（使用daisyUI modal）
+- **SearchBar.vue** - 题目搜索功能
+
+### 3. daisyUI组件使用方案
+
+#### Collapse组件集成
+基于提供的daisyUI collapse文档，选择checkbox方式实现：
+```html
+<div class="collapse bg-base-100 border-base-300 border">
+  <input type="checkbox" />
+  <div class="collapse-title font-semibold">问题标题</div>
+  <div class="collapse-content text-sm">答案内容</div>
+</div>
+```
+
+#### Theme Controller集成
+需要研究theme-controller组件的具体实现方式，支持明暗主题切换。
+
+### 4. 响应式设计要点
+- 移动端优化的collapse交互（触摸友好）
+- 顶部固定导航的移动端适配（sticky positioning）
+- 编辑功能的触摸友好界面（更大的按钮和输入区域）
+- 适配不同屏幕尺寸的布局（sm/md/lg断点）
+- 移动端的分类切换体验优化
+
+### 5. 本地存储方案
+IndexDB方案详细设计：
+```javascript
+// 使用Dexie.js的数据库设计
+const db = new Dexie('InterviewBankDB');
+db.version(1).stores({
+  categories: 'id, name, description',
+  questions: 'id, categoryId, question, answer, isEdited, editedAt',
+  userEdits: 'questionId, editedQuestion, editedAnswer, editedAt'
+});
+```
+
+存储策略：
+- 初始数据预填充（内置题库）
+- 用户编辑增量存储
+- 支持数据导出/导入JSON格式
+- 数据版本管理和迁移
+
+### 6. 性能优化考虑
+- 虚拟滚动：当题目数量超过100条时启用
+- 懒加载：按分类按需加载题目
+- 搜索优化：客户端全文搜索 + 防抖
+- 缓存策略：合理使用浏览器缓存
+
+## 技术约束与考虑
+1. **daisyUI版本兼容性**：当前5.0.43版本的collapse和theme-controller API
+2. **Vue 3 Composition API最佳实践**：使用setup语法糖和组合式函数
+3. **TypeScript类型安全**：完整的类型定义，避免any类型
+4. **移动端性能**：避免过度渲染，优化滚动性能
+5. **无障碍支持**：keyboard navigation和screen reader支持
+
+## 待明确的问题
+1. **初始数据来源**：建议先创建静态JSON数据文件作为初始题库
+2. **题目数量规模**：建议每个分类50-200题，总量500-1000题
+3. **编辑权限控制**：当前方案为纯本地编辑，无权限控制
+4. **数据同步需求**：是否需要云端同步功能（后期扩展）
+5. **搜索功能范围**：支持问题和答案的全文搜索
+6. **主题定制**：是否需要超出daisyUI默认主题的自定义样式
+
+# Proposed Solution (Populated by INNOVATE mode)
+[Different approaches discussed, pros/cons evaluation, final favored solution direction]
+
+# Implementation Plan (Generated by PLAN mode)
+
+## 核心UI交互需求整合
+1. **默认状态**：首页选择第一个分类，所有答案折叠
+2. **响应式布局**：PC端左右两栏，移动端单栏
+3. **现代扁平风格**：充分利用daisyUI组件库
+4. **交互体验**：点击展开/折叠答案
+
+## 技术实现方案
+
+### 响应式布局策略
+- PC端(lg及以上)：左侧分类导航栏(固定宽度) + 右侧题目区域(自适应)
+- 移动端(md及以下)：顶部分类tabs + 下方题目列表(单栏)
+
+### 组件设计方案
+- 使用daisyUI的drawer组件实现PC侧边栏
+- 使用tabs组件实现移动端分类切换
+- 使用collapse组件实现题目折叠交互
+- 使用card组件包装题目内容
+- 集成theme-controller实现主题切换
+
+### 实现文件计划
+
+**文件变更列表：**
+
+- **File**: src/components/InterviewBank/CategorySidebar.vue
+  - **Rationale**: 创建PC端左侧分类导航栏组件，支持分类选择和主题切换
+
+- **File**: src/components/InterviewBank/CategoryTabs.vue
+  - **Rationale**: 创建移动端顶部分类选择tabs组件
+
+- **File**: src/components/InterviewBank/QuestionCard.vue
+  - **Rationale**: 创建基于daisyUI collapse的题目卡片组件，支持展开/折叠
+
+- **File**: src/components/InterviewBank/ThemeToggle.vue
+  - **Rationale**: 创建主题切换组件，使用daisyUI theme-controller
+
+- **File**: src/views/InterviewBankView.vue
+  - **Rationale**: 创建主页面视图，实现响应式两栏/单栏布局逻辑
+
+- **File**: src/composables/useInterviewBank.ts
+  - **Rationale**: 创建组合式函数管理题库状态和交互逻辑
+
+- **File**: src/data/mockData.ts
+  - **Rationale**: 创建模拟题库数据，包含多个分类的题目
+
+- **File**: src/types/interview.ts
+  - **Rationale**: 定义TypeScript类型接口
+
+- **File**: src/router/index.ts
+  - **Rationale**: 更新路由配置，添加题库页面路由
+
+### 详细设计规范
+
+**颜色方案**：基于daisyUI语义化颜色
+- 主色调：primary/secondary
+- 背景色：base-100/base-200/base-300
+- 文本色：base-content
+- 边框色：base-300
+
+**组件样式标准**：
+- 卡片阴影：shadow-sm到shadow-lg
+- 圆角：rounded-lg统一标准
+- 间距：使用4/8/12/16px标准间距
+- 过渡动画：transition-all duration-200
+
+**响应式断点**：
+- sm: 640px (移动端)
+- md: 768px (平板)
+- lg: 1024px (PC端两栏触发点)
+- xl: 1280px (宽屏优化)
+
+## Implementation Checklist:
+1. 创建TypeScript类型定义文件(src/types/interview.ts)
+2. 创建模拟数据文件(src/data/mockData.ts)
+3. 创建题库状态管理组合函数(src/composables/useInterviewBank.ts)
+4. 创建主题切换组件(src/components/InterviewBank/ThemeToggle.vue)
+5. 创建题目卡片组件(src/components/InterviewBank/QuestionCard.vue)
+6. 创建PC端侧边栏组件(src/components/InterviewBank/CategorySidebar.vue)
+7. 创建移动端分类tabs组件(src/components/InterviewBank/CategoryTabs.vue)
+8. 创建主页面视图组件(src/views/InterviewBankView.vue)
+9. 更新路由配置添加题库页面
+10. 测试响应式布局在不同设备上的表现
+11. 验证默认选择第一个分类和折叠状态的实现
+12. 优化点击交互体验和动画过渡效果
+
+# Current Execution Step (Updated by EXECUTE mode when starting a step)
+> 待开始执行第一步
+
+# Task Progress (Appended by EXECUTE mode after each step completion)
+
+*   [2024-12-30 步骤1-10]
+    *   Step: 步骤1-10 完整实现题库应用核心功能
+    *   Modifications: 创建了所有核心组件文件和配置
+    *   Change Summary: 完成了TypeScript类型定义、数据管理、所有Vue组件、路由配置等
+    *   Reason: 执行计划步骤1-10
+    *   Blockers: 无
+    *   User Confirmation Status: Success
+
+*   [2024-12-30 步骤11]
+    *   Step: 验证默认选择第一个分类和折叠状态的实现  
+    *   Modifications: 
+      - 修复src/composables/useInterviewBank.ts中默认分类选择逻辑
+      - 改进loadUserData函数，只有当保存的分类ID有效时才使用
+      - 确保题目默认isExpanded: false折叠状态
+    *   Change Summary: 修复了分类选择逻辑冲突，确保默认行为符合要求
+    *   Reason: 执行计划步骤11
+    *   Blockers: 无
+    *   Status: Pending Confirmation
+
+*   [2024-12-30 步骤12]
+    *   Step: 优化点击交互体验和动画过渡效果
+    *   Modifications:
+      - 大幅增强src/components/InterviewBank/QuestionCard.vue的CSS动画
+      - 添加卡片悬停缩放效果(PC端)、按钮悬停动画、展开指示器旋转动画
+      - 实现slideDown展开动画、模态框滑入动画、内容渐入动画
+      - 添加移动端长按效果、高对比度支持、减少动画偏好支持
+      - 优化深色模式和响应式体验
+    *   Change Summary: 实现了丰富的交互动画和微交互效果，提升用户体验
+    *   Reason: 执行计划步骤12
+    *   Blockers: 无
+    *   Status: Pending Confirmation
+
+*   [2024-12-30 IndexedDB重构 步骤1-5]
+    *   Step: IndexedDB架构基础设施建设 (步骤1-5)
+    *   Modifications:
+      - 确认package.json中已存在dexie依赖
+      - 创建src/types/storage.ts，定义完整的IndexedDB存储类型系统
+      - 创建src/services/database/schema.ts，定义Dexie数据库Schema和版本控制
+      - 创建src/services/database/index.ts，实现完整的数据库类和初始化逻辑  
+      - 创建src/services/cache/cacheManager.ts，实现缓存管理器（待完善数据库集成）
+    *   Change Summary: 完成IndexedDB基础架构，缓存有效期设置为30天，建立了完整的类型系统和数据库Schema
+    *   Reason: 执行计划步骤1-5，调整数据获取方式为script加载+IndexedDB存储
+    *   Blockers: 无
+# Final Review (Populated by REVIEW mode)
+
+## 数据获取交互方案
+
+### 数据获取策略
+**核心原则**：优先使用本地缓存，按需远程加载，渐进式数据呈现
+
+### IndexedDB缓存策略
+```typescript
+interface CacheStrategy {
+  // 缓存检查逻辑
+  checkCacheExists: () => Promise<boolean>;
+  
+  // 缓存版本检查
+  checkCacheVersion: () => Promise<{
+    hasCache: boolean;
+    version: string;
+    lastUpdated: Date;
+    isExpired: boolean;
+  }>;
+  
+  // 缓存数据获取
+  getCachedData: () => Promise<{
+    categories: Category[];
+    questions: Question[];
+    totalCount: number;
+  }>;
+  
+  // 缓存数据存储
+  setCachedData: (data: any, version: string) => Promise<void>;
+}
+```
+
+### 动态Script加载方案
+```typescript
+interface ScriptLoadingConfig {
+  // 数据源配置
+  dataSources: {
+    [categoryId: string]: {
+      scriptUrl: string;         // JSON数据的script标签URL
+      globalVarName: string;     // 全局变量名
+      categoryName: string;      // 分类显示名称
+      priority: number;          // 加载优先级
+      essential: boolean;        // 是否为必需数据
+    };
+  };
+  
+  // 加载配置
+  loadingConfig: {
+    concurrent: number;          // 并发加载数量
+    timeout: number;            // 超时时间(ms)
+    retryCount: number;         // 重试次数
+    retryDelay: number;         // 重试延迟(ms)
+  };
+}
+
+// 示例配置
+const defaultConfig: ScriptLoadingConfig = {
+  dataSources: {
+    'huawei-test': {
+      scriptUrl: '/data/huawei-software-test-questions.js',
+      globalVarName: 'HUAWEI_TEST_DATA',
+      categoryName: '华为软件测试题',
+      priority: 1,
+      essential: true
+    },
+    'linux-basic': {
+      scriptUrl: '/data/linux-basic-questions.js', 
+      globalVarName: 'LINUX_BASIC_DATA',
+      categoryName: 'Linux基础题',
+      priority: 2,
+      essential: true
+    },
+    'python-interview': {
+      scriptUrl: '/data/python-interview-questions.js',
+      globalVarName: 'PYTHON_INTERVIEW_DATA', 
+      categoryName: 'Python面试题',
+      priority: 3,
+      essential: false
+    }
+  },
+  loadingConfig: {
+    concurrent: 2,
+    timeout: 10000,
+    retryCount: 3,
+    retryDelay: 1000
+  }
+};
+```
+
+### 加载进度UI设计
+
+#### 加载状态接口
+```typescript
+interface LoadingState {
+  phase: 'checking' | 'loading' | 'processing' | 'complete' | 'error';
+  totalCategories: number;
+  loadedCategories: number;
+  currentCategory?: {
+    id: string;
+    name: string;
+    status: 'pending' | 'loading' | 'success' | 'error';
+    progress: number;        // 0-100
+    questionsCount?: number;
+  };
+  categories: Array<{
+    id: string;
+    name: string;
+    status: 'pending' | 'loading' | 'success' | 'error';
+    questionsCount: number;
+    loadTime?: number;       // 加载耗时(ms)
+  }>;
+  overallProgress: number;   // 0-100
+  errorMessage?: string;
+}
+```
+
+#### 加载UI组件设计
+```vue
+<!-- LoadingScreen.vue 组件结构 -->
+<template>
+  <div class="loading-screen bg-base-100 min-h-screen flex flex-col justify-center items-center p-4">
+    <!-- 整体进度 -->
+    <div class="w-full max-w-md mb-8">
+      <div class="text-center mb-4">
+        <div class="loading loading-spinner loading-lg text-primary"></div>
+        <h2 class="text-xl font-semibold mt-4">{{ getPhaseText() }}</h2>
+        <p class="text-base-content/70 mt-2">{{ getPhaseDescription() }}</p>
+      </div>
+      
+      <!-- 整体进度条 -->
+      <div class="w-full bg-base-200 rounded-full h-2 mb-4">
+        <div 
+          class="bg-primary h-2 rounded-full transition-all duration-300"
+          :style="{ width: `${loadingState.overallProgress}%` }"
+        ></div>
+      </div>
+      
+      <div class="text-center text-sm text-base-content/60">
+        {{ loadingState.loadedCategories }} / {{ loadingState.totalCategories }} 分类已加载
+      </div>
+    </div>
+    
+    <!-- 分类加载详情 -->
+    <div class="w-full max-w-lg space-y-3">
+      <div 
+        v-for="category in loadingState.categories" 
+        :key="category.id"
+        class="flex items-center justify-between p-3 bg-base-200 rounded-lg"
+      >
+        <div class="flex items-center space-x-3">
+          <!-- 状态图标 -->
+          <div class="flex-shrink-0">
+            <div v-if="category.status === 'pending'" class="w-4 h-4 bg-base-300 rounded-full"></div>
+            <div v-else-if="category.status === 'loading'" class="loading loading-spinner loading-sm text-primary"></div>
+            <div v-else-if="category.status === 'success'" class="text-success">✓</div>
+            <div v-else-if="category.status === 'error'" class="text-error">✗</div>
+          </div>
+          
+          <!-- 分类信息 -->
+          <div>
+            <div class="font-medium">{{ category.name }}</div>
+            <div v-if="category.questionsCount" class="text-sm text-base-content/60">
+              {{ category.questionsCount }} 道题目
+            </div>
+            <div v-if="category.loadTime && category.status === 'success'" class="text-xs text-base-content/50">
+              耗时 {{ category.loadTime }}ms
+            </div>
+          </div>
+        </div>
+        
+        <!-- 加载时间或状态 -->
+        <div class="text-sm text-base-content/60">
+          <span v-if="category.status === 'pending'">等待中</span>
+          <span v-else-if="category.status === 'loading'">加载中</span>
+          <span v-else-if="category.status === 'success'" class="text-success">完成</span>
+          <span v-else-if="category.status === 'error'" class="text-error">失败</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 错误信息 -->
+    <div v-if="loadingState.errorMessage" class="mt-6 w-full max-w-lg">
+      <div class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>{{ loadingState.errorMessage }}</span>
+        <button @click="retryLoading" class="btn btn-sm btn-outline">重试</button>
+      </div>
+    </div>
+  </div>
+</template>
+```
+
+### 数据获取完整流程
+
+#### 流程步骤设计
+```typescript
+interface DataLoadingFlow {
+  steps: Array<{
+    phase: string;
+    description: string;
+    action: () => Promise<any>;
+    onProgress?: (progress: number) => void;
+    onSuccess?: (result: any) => void;
+    onError?: (error: Error) => void;
+  }>;
+}
+
+const dataLoadingFlow: DataLoadingFlow = {
+  steps: [
+    {
+      phase: 'checking',
+      description: '检查本地缓存',
+      action: async () => {
+        const cacheInfo = await checkCacheVersion();
+        return cacheInfo;
+      }
+    },
+    {
+      phase: 'loading', 
+      description: '加载远程数据',
+      action: async () => {
+        if (hasCacheAndValid) {
+          return await getCachedData();
+        } else {
+          return await loadRemoteDataWithProgress();
+        }
+      },
+      onProgress: (progress) => {
+        updateLoadingProgress(progress);
+      }
+    },
+    {
+      phase: 'processing',
+      description: '处理数据',
+      action: async (rawData) => {
+        const transformedData = await transformAndValidateData(rawData);
+        await setCachedData(transformedData);
+        return transformedData;
+      }
+    },
+    {
+      phase: 'complete',
+      description: '初始化界面',
+      action: async (data) => {
+        await initializeAppState(data);
+        await setupDefaultCategory();
+        return data;
+      }
+    }
+  ]
+};
+```
+
+#### Script动态加载实现
+```typescript
+interface ScriptLoader {
+  loadScript: (config: ScriptConfig) => Promise<any>;
+  loadMultipleScripts: (configs: ScriptConfig[]) => Promise<any[]>;
+  parseScriptData: (globalVarName: string) => any;
+  cleanupScript: (scriptElement: HTMLScriptElement) => void;
+}
+
+// 核心加载逻辑
+const scriptLoader: ScriptLoader = {
+  async loadScript(config) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = config.scriptUrl;
+      script.async = true;
+      
+      const timeout = setTimeout(() => {
+        document.head.removeChild(script);
+        reject(new Error(`加载超时: ${config.categoryName}`));
+      }, config.timeout || 10000);
+      
+      script.onload = () => {
+        clearTimeout(timeout);
+        try {
+          const data = window[config.globalVarName];
+          if (!data) {
+            throw new Error(`数据变量未找到: ${config.globalVarName}`);
+          }
+          
+          // 清理全局变量
+          delete window[config.globalVarName];
+          document.head.removeChild(script);
+          
+          resolve({
+            categoryId: config.categoryId,
+            categoryName: config.categoryName,
+            data: data,
+            questionsCount: Array.isArray(data) ? data.length : 0
+          });
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      script.onerror = () => {
+        clearTimeout(timeout);
+        document.head.removeChild(script);
+        reject(new Error(`加载失败: ${config.categoryName}`));
+      };
+      
+      document.head.appendChild(script);
+    });
+  },
+  
+  async loadMultipleScripts(configs) {
+    const results = [];
+    const concurrent = Math.min(configs.length, 3); // 最多3个并发
+    
+    for (let i = 0; i < configs.length; i += concurrent) {
+      const batch = configs.slice(i, i + concurrent);
+      const batchPromises = batch.map(config => 
+        this.loadScript(config).catch(error => ({ error, config }))
+      );
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      results.push(...batchResults);
+      
+      // 更新加载进度
+      const progress = Math.round(((i + batch.length) / configs.length) * 100);
+      updateLoadingProgress(progress);
+    }
+    
+    return results;
+  }
+};
+```
+
+### 加载状态管理
+
+#### 状态管理Hook
+```typescript
+// useDataLoading.ts
+interface UseDataLoading {
+  loadingState: Ref<LoadingState>;
+  startDataLoading: () => Promise<void>;
+  retryLoading: () => Promise<void>;
+  resetLoading: () => void;
+}
+
+export function useDataLoading(): UseDataLoading {
+  const loadingState = ref<LoadingState>({
+    phase: 'checking',
+    totalCategories: 0,
+    loadedCategories: 0,
+    categories: [],
+    overallProgress: 0
+  });
+  
+  const startDataLoading = async () => {
+    try {
+      // 1. 检查缓存
+      loadingState.value.phase = 'checking';
+      const cacheInfo = await checkCacheVersion();
+      
+      if (cacheInfo.hasCache && !cacheInfo.isExpired) {
+        // 使用缓存数据
+        const cachedData = await getCachedData();
+        await initializeWithData(cachedData);
+        loadingState.value.phase = 'complete';
+        return;
+      }
+      
+      // 2. 加载远程数据
+      loadingState.value.phase = 'loading';
+      await loadRemoteData();
+      
+      // 3. 处理完成
+      loadingState.value.phase = 'complete';
+      
+    } catch (error) {
+      loadingState.value.phase = 'error';
+      loadingState.value.errorMessage = error.message;
+    }
+  };
+  
+  return {
+    loadingState,
+    startDataLoading,
+    retryLoading: startDataLoading,
+    resetLoading: () => {
+      loadingState.value = {
+        phase: 'checking',
+        totalCategories: 0,
+        loadedCategories: 0,
+        categories: [],
+        overallProgress: 0
+      };
+    }
+  };
+}
+``` 

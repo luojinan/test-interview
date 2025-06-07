@@ -7,6 +7,9 @@ globs: *
 
 ## PROJECT RULES
 
+- **Data Loading:** Data must be loaded using script tags and stored in IndexedDB.
+- **Data Editing:** Editing and submission of data must directly modify the data in IndexedDB.
+
 ## CODING STANDARDS
 
 ## WORKFLOW & RELEASE RULES
@@ -14,6 +17,7 @@ globs: *
 ## TECH STACK
 - tailwindcss: ^4.1.8 (existing, may need update)
 - daisyui: ^5.0.43 (existing, may need update)
+- Dexie.js: (to be added, for IndexedDB functionality)
 
 ## PROJECT DOCUMENTATION & CONTEXT SYSTEM
 
@@ -21,3 +25,890 @@ globs: *
 
 ## REFERENCES
 - tailwindcss installation: https://tailwindcss.com/docs/installation/using-vite
+- daisyUI components: Ensure components are used and styled according to the daisyUI documentation for a modern, flat UI style.
+
+## UI DESIGN RULES
+- **General:** All components must be styled directly within the `<template>` section using Tailwind CSS classes instead of using `@apply` in `<style scoped>` blocks. Custom animation utility classes should be created for complex animations.
+- **ThemeToggle.vue:**
+    - Use direct Tailwind classes for styling.
+    - Use CSS variables for dynamic theme colors.
+- **CategorySidebar.vue:**
+    - Use direct Tailwind classes for container and item styling.
+    - Use `:class` for dynamic state styling.
+    - Retain CSS for scrollbar styling.
+- **QuestionCard.vue:**
+    - Use direct Tailwind classes for base styles and hover effects.
+    - Use `:class` for conditional styling based on state.
+    - Keep keyframe animations and media queries in CSS.
+    - Use custom animation utility classes for animations (e.g., `animate-slideDown`, `animate-fadeInLeft`).
+- **Responsive Layout:** PC (lg and above): Left category navigation (fixed width) + right question area (adaptive). Mobile (md and below): Top category tabs + bottom question list (single column).
+- **Component Styling:**
+    - Card shadows: Use `shadow-sm` to `shadow-lg`.
+    - Rounded corners: Standardize on `rounded-lg`.
+    - Spacing: Use 4/8/12/16px standard spacing.
+    - Transitions: Use `transition-all duration-200` for animations.
+- **Color Scheme:** Based on daisyUI semantic colors:
+    - Primary colors: `primary`/`secondary`
+    - Background colors: `base-100`/`base-200`/`base-300`
+    - Text colors: `base-content`
+    - Border colors: `base-300`
+- **Breakpoints:**
+    - `sm`: 640px (Mobile)
+    - `md`: 768px (Tablet)
+    - `lg`: 1024px (PC - two-column layout trigger)
+    - `xl`: 1280px (Wide screen optimization)
+- **Initial State:** The home page should default to the first category with all answers collapsed.
+
+## DATA STRUCTURE DESIGN
+```typescript
+// 原始JSON数据结构
+interface OriginalQuestionData {
+  id: number;
+  catalogId: number;
+  subject: string;        // 题目内容
+  answer: string;         // 答案内容
+  readCount: number;      // 阅读次数
+  createTime: number[];   // 创建时间数组 [年,月,日,时,分,秒]
+  updateTime: number[];   // 更新时间数组
+  optionStatus: number;   // 选项状态
+  catalogName: string | null;  // 分类名称
+  collect: boolean;       // 收藏状态
+}
+
+// 原始分类数据结构推导
+interface OriginalCatalogData {
+  id: number;
+  name: string;           // 分类名称
+  description?: string;
+}
+```
+
+```typescript
+// 应用内使用的分类接口
+interface Category {
+  id: string;
+  name: string;           // "Linux题", "Python题", "华为软件测试题"
+  description?: string;
+  questionCount: number;  // 该分类下的题目数量
+  icon?: string;          // 分类图标
+}
+
+// 应用内使用的题目接口
+interface Question {
+  id: string;
+  categoryId: string;
+  subject: string;        // 题目内容
+  answer: string;         // 答案内容
+  readCount: number;      // 阅读次数
+  createTime: Date;       // 创建时间
+  updateTime: Date;       // 更新时间
+  isCollected: boolean;   // 收藏状态
+  
+  // 用户编辑相关
+  isEdited: boolean;
+  editedAt?: Date;
+  originalSubject?: string;
+  originalAnswer?: string;
+  
+  // UI状态
+  isExpanded: boolean;    // 是否展开答案
+  isBookmarked: boolean;  // 是否已收藏
+}
+
+// 用户编辑记录
+interface UserEdit {
+  questionId: string;
+  editedSubject: string;
+  editedAnswer: string;
+  editedAt: Date;
+  editType: 'subject' | 'answer' | 'both';
+}
+
+// 用户偏好设置
+interface UserPreferences {
+  selectedCategoryId: string;
+  theme: 'light' | 'dark' | 'auto';
+  autoExpandAnswers: boolean;
+  showReadCount: boolean;
+  compactMode: boolean;
+}
+
+// 应用状态接口
+interface InterviewBankState {
+  categories: Category[];
+  questions: Question[];
+  userEdits: UserEdit[];
+  preferences: UserPreferences;
+  currentCategoryId: string;
+  searchQuery: string;
+  isLoading: boolean;
+  error?: string;
+}
+```
+
+```typescript
+// 数据转换工具函数
+interface DataTransformUtils {
+  // 时间数组转换为Date对象
+  arrayToDate: (timeArray: number[]) => Date;
+  
+  // 原始数据转换为应用数据
+  transformOriginalQuestion: (original: OriginalQuestionData) => Question;
+  
+  // 批量数据转换
+  transformQuestionsBatch: (original: OriginalQuestionData[]) => Question[];
+  
+  // 分类数据聚合
+  aggregateCategories: (questions: Question[]) => Category[];
+  
+  // 数据验证
+  validateQuestionData: (question: Question) => boolean;
+}
+```
+
+```typescript
+// 本地存储结构
+interface LocalStorageSchema {
+  // 原始数据缓存
+  originalData: {
+    questions: OriginalQuestionData[];
+    lastUpdated: Date;
+    version: string;
+  };
+  
+  // 用户数据
+  userData: {
+    edits: UserEdit[];
+    preferences: UserPreferences;
+    bookmarks: string[];  // 收藏的题目ID列表
+    readHistory: {
+      questionId: string;
+      lastRead: Date;
+      readCount: number;
+    }[];
+  };
+  
+  // 应用缓存
+  appCache: {
+    transformedQuestions: Question[];
+    categories: Category[];
+    lastProcessed: Date;
+  };
+}
+```
+
+#### 数据处理流程
+1. **数据加载**：从JSON文件加载原始华为面试题数据
+2. **数据转换**：将原始格式转换为应用内格式
+3. **分类聚合**：基于catalogId和catalogName生成分类列表
+4. **状态初始化**：设置默认的UI状态（折叠状态、选中分类等）
+5. **本地存储**：将转换后的数据存储到localStorage/IndexedDB
+6. **增量更新**：支持新数据的增量加载和合并
+
+#### 示例数据转换
+```typescript
+// 原始数据示例
+const originalData: OriginalQuestionData = {
+  id: 153,
+  catalogId: 16,
+  subject: "1、下面哪个Linux命令可以一次显示一页内容？",
+  answer: "A、pause\n\nB、cat\n\nC、more\n\nD、rep\n",
+  readCount: 820,
+  createTime: [2022, 6, 10, 9, 9, 40],
+  updateTime: [2022, 6, 10, 9, 9, 40],
+  optionStatus: 0,
+  catalogName: null,
+  collect: false
+};
+
+// 转换后的应用数据
+const transformedData: Question = {
+  id: "153",
+  categoryId: "16",
+  subject: "1、下面哪个Linux命令可以一次显示一页内容？",
+  answer: "A、pause\n\nB、cat\n\nC、more\n\nD、rep\n",
+  readCount: 820,
+  createTime: new Date(2022, 5, 10, 9, 9, 40), // 月份需要-1
+  updateTime: new Date(2022, 5, 10, 9, 9, 40),
+  isCollected: false,
+  isEdited: false,
+  isExpanded: false,
+  isBookmarked: false
+};
+```
+
+## DATA ACQUISITION INTERACTION SCHEME
+
+### Data Acquisition Strategy
+**Core Principle**: Prioritize local caching, load remotely on demand, and present data progressively.
+
+### IndexedDB Caching Strategy
+```typescript
+interface CacheStrategy {
+  // 缓存检查逻辑
+  checkCacheExists: () => Promise<boolean>;
+  
+  // 缓存版本检查
+  checkCacheVersion: () => Promise<{
+    hasCache: boolean;
+    version: string;
+    lastUpdated: Date;
+    isExpired: boolean;
+  }>;
+  
+  // 缓存数据获取
+  getCachedData: () => Promise<{
+    categories: Category[];
+    questions: Question[];
+    totalCount: number;
+  }>;
+  
+  // 缓存数据存储
+  setCachedData: (data: any, version: string) => Promise<void>;
+}
+```
+
+### Dynamic Script Loading Scheme
+```typescript
+interface ScriptLoadingConfig {
+  // 数据源配置
+  dataSources: {
+    [categoryId: string]: {
+      scriptUrl: string;         // JSON数据的script标签URL
+      globalVarName: string;     // 全局变量名
+      categoryName: string;      // 分类显示名称
+      priority: number;          // 加载优先级
+      essential: boolean;        // 是否为必需数据
+    };
+  };
+  
+  // 加载配置
+  loadingConfig: {
+    concurrent: number;          // 并发加载数量
+    timeout: number;            // 超时时间(ms)
+    retryCount: number;         // 重试次数
+    retryDelay: number;         // 重试延迟(ms)
+  };
+}
+
+// 示例配置
+const defaultConfig: ScriptLoadingConfig = {
+  dataSources: {
+    'huawei-test': {
+      scriptUrl: '/data/huawei-software-test-questions.js',
+      globalVarName: 'HUAWEI_TEST_DATA',
+      categoryName: '华为软件测试题',
+      priority: 1,
+      essential: true
+    },
+    'linux-basic': {
+      scriptUrl: '/data/linux-basic-questions.js', 
+      globalVarName: 'LINUX_BASIC_DATA',
+      categoryName: 'Linux基础题',
+      priority: 2,
+      essential: true
+    },
+    'python-interview': {
+      scriptUrl: '/data/python-interview-questions.js',
+      globalVarName: 'PYTHON_INTERVIEW_DATA', 
+      categoryName: 'Python面试题',
+      priority: 3,
+      essential: false
+    }
+  },
+  loadingConfig: {
+    concurrent: 2,
+    timeout: 10000,
+    retryCount: 3,
+    retryDelay: 1000
+  }
+};
+```
+
+### Loading Progress UI Design
+
+#### Loading State Interface
+```typescript
+interface LoadingState {
+  phase: 'checking' | 'loading' | 'processing' | 'complete' | 'error';
+  totalCategories: number;
+  loadedCategories: number;
+  currentCategory?: {
+    id: string;
+    name: string;
+    status: 'pending' | 'loading' | 'success' | 'error';
+    progress: number;        // 0-100
+    questionsCount?: number;
+  };
+  categories: Array<{
+    id: string;
+    name: string;
+    status: 'pending' | 'loading' | 'success' | 'error';
+    questionsCount: number;
+    loadTime?: number;       // 加载耗时(ms)
+  }>;
+  overallProgress: number;   // 0-100
+  errorMessage?: string;
+}
+```
+
+#### Loading UI Component Design
+```vue
+<!-- LoadingScreen.vue 组件结构 -->
+<template>
+  <div class="loading-screen bg-base-100 min-h-screen flex flex-col justify-center items-center p-4">
+    <!-- 整体进度 -->
+    <div class="w-full max-w-md mb-8">
+      <div class="text-center mb-4">
+        <div class="loading loading-spinner loading-lg text-primary"></div>
+        <h2 class="text-xl font-semibold mt-4">{{ getPhaseText() }}</h2>
+        <p class="text-base-content/70 mt-2">{{ getPhaseDescription() }}</p>
+      </div>
+      
+      <!-- 整体进度条 -->
+      <div class="w-full bg-base-200 rounded-full h-2 mb-4">
+        <div 
+          class="bg-primary h-2 rounded-full transition-all duration-300"
+          :style="{ width: `${loadingState.overallProgress}%` }"
+        ></div>
+      </div>
+      
+      <div class="text-center text-sm text-base-content/60">
+        {{ loadingState.loadedCategories }} / {{ loadingState.totalCategories }} 分类已加载
+      </div>
+    </div>
+    
+    <!-- 分类加载详情 -->
+    <div class="w-full max-w-lg space-y-3">
+      <div 
+        v-for="category in loadingState.categories" 
+        :key="category.id"
+        class="flex items-center justify-between p-3 bg-base-200 rounded-lg"
+      >
+        <div class="flex items-center space-x-3">
+          <!-- 状态图标 -->
+          <div class="flex-shrink-0">
+            <div v-if="category.status === 'pending'" class="w-4 h-4 bg-base-300 rounded-full"></div>
+            <div v-else-if="category.status === 'loading'" class="loading loading-spinner loading-sm text-primary"></div>
+            <div v-else-if="category.status === 'success'" class="text-success">✓</div>
+            <div v-else-if="category.status === 'error'" class="text-error">✗</div>
+          </div>
+          
+          <!-- 分类信息 -->
+          <div>
+            <div class="font-medium">{{ category.name }}</div>
+            <div v-if="category.questionsCount" class="text-sm text-base-content/60">
+              {{ category.questionsCount }} 道题目
+            </div>
+            <div v-if="category.loadTime && category.status === 'success'" class="text-xs text-base-content/50">
+              耗时 {{ category.loadTime }}ms
+            </div>
+          </div>
+        </div>
+        
+        <!-- 加载时间或状态 -->
+        <div class="text-sm text-base-content/60">
+          <span v-if="category.status === 'pending'">等待中</span>
+          <span v-else-if="category.status === 'loading'">加载中</span>
+          <span v-else-if="category.status === 'success'" class="text-success">完成</span>
+          <span v-else-if="category.status === 'error'">失败</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 错误信息 -->
+    <div v-if="loadingState.errorMessage" class="mt-6 w-full max-w-lg">
+      <div class="alert alert-error">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>{{ loadingState.errorMessage }}</span>
+        <button @click="retryLoading" class="btn btn-sm btn-outline">重试</button>
+      </div>
+    </div>
+  </div>
+</template>
+```
+
+### Data Acquisition Complete Flow
+
+#### Flow Step Design
+```typescript
+interface DataLoadingFlow {
+  steps: Array<{
+    phase: string;
+    description: string;
+    action: () => Promise<any>;
+    onProgress?: (progress: number) => void;
+    onSuccess?: (result: any) => void;
+    onError?: (error: Error) => void;
+  }>;
+}
+
+const dataLoadingFlow: DataLoadingFlow = {
+  steps: [
+    {
+      phase: 'checking',
+      description: '检查本地缓存',
+      action: async () => {
+        const cacheInfo = await checkCacheVersion();
+        return cacheInfo;
+      }
+    },
+    {
+      phase: 'loading', 
+      description: '加载远程数据',
+      action: async () => {
+        if (hasCacheAndValid) {
+          return await getCachedData();
+        } else {
+          return await loadRemoteDataWithProgress();
+        }
+      },
+      onProgress: (progress) => {
+        updateLoadingProgress(progress);
+      }
+    },
+    {
+      phase: 'processing',
+      description: '处理数据',
+      action: async (rawData) => {
+        const transformedData = await transformAndValidateData(rawData);
+        await setCachedData(transformedData);
+        return transformedData;
+      }
+    },
+    {
+      phase: 'complete',
+      description: '初始化界面',
+      action: async (data) => {
+        await initializeAppState(data);
+        await setupDefaultCategory();
+        return data;
+      }
+    }
+  ]
+};
+```
+
+#### Script Dynamic Loading Implementation
+```typescript
+interface ScriptLoader {
+  loadScript: (config: ScriptConfig) => Promise<any>;
+  loadMultipleScripts: (configs: ScriptConfig[]) => Promise<any[]>;
+  parseScriptData: (globalVarName: string) => any;
+  cleanupScript: (scriptElement: HTMLScriptElement) => void;
+}
+
+// 核心加载逻辑
+const scriptLoader: ScriptLoader = {
+  async loadScript(config) {
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = config.scriptUrl;
+      script.async = true;
+      
+      const timeout = setTimeout(() => {
+        document.head.removeChild(script);
+        reject(new Error(`加载超时: ${config.categoryName}`));
+      }, config.timeout || 10000);
+      
+      script.onload = () => {
+        clearTimeout(timeout);
+        try {
+          const data = window[config.globalVarName];
+          if (!data) {
+            throw new Error(`数据变量未找到: ${config.globalVarName}`);
+          }
+          
+          // 清理全局变量
+          delete window[config.globalVarName];
+          document.head.removeChild(script);
+          
+          resolve({
+            categoryId: config.categoryId,
+            categoryName: config.categoryName,
+            data: data,
+            questionsCount: Array.isArray(data) ? data.length : 0
+          });
+        } catch (error) {
+          reject(error);
+        }
+       };
+       
+       script.onerror = () => {
+         clearTimeout(timeout);
+         document.head.removeChild(script);
+         reject(new Error(`加载失败: ${config.categoryName}`));
+       };
+       
+       document.head.appendChild(script);
+     });
+   },
+   
+   async loadMultipleScripts(configs) {
+     const results = [];
+     const concurrent = Math.min(configs.length, 3); // 最多3个并发
+     
+     for (let i = 0; i < configs.length; i += concurrent) {
+       const batch = configs.slice(i, i + concurrent);
+       const batchPromises = batch.map(config => 
+         this.loadScript(config).catch(error => ({ error, config }))
+       );
+       
+       const batchResults = await Promise.allSettled(batchPromises);
+       results.push(...batchResults);
+       
+       // 更新加载进度
+       const progress = Math.round(((i + batch.length) / configs.length) * 100);
+       updateLoadingProgress(progress);
+     }
+     
+     return results;
+   }
+ };
+```
+
+### Loading Status Management
+
+#### Status Management Hook
+```typescript
+// useDataLoading.ts
+interface UseDataLoading {
+  loadingState: Ref<LoadingState>;
+  startDataLoading: () => Promise<void>;
+  retryLoading: () => Promise<void>;
+  resetLoading: () => void;
+}
+
+export function useDataLoading(): UseDataLoading {
+  const loadingState = ref<LoadingState>({
+    phase: 'checking',
+    totalCategories: 0,
+    loadedCategories: 0,
+    categories: [],
+    overallProgress: 0
+  });
+  
+  const startDataLoading = async () => {
+    try {
+      // 1. 检查缓存
+      loadingState.value.phase = 'checking';
+      const cacheInfo = await checkCacheVersion();
+      
+      if (cacheInfo.hasCache && !cacheInfo.isExpired) {
+        // 使用缓存数据
+        const cachedData = await getCachedData();
+        await initializeWithData(cachedData);
+        loadingState.value.phase = 'complete';
+        return;
+      }
+      
+      // 2. 加载远程数据
+      loadingState.value.phase = 'loading';
+      await loadRemoteData();
+      
+      // 3. 处理完成
+      loadingState.value.phase = 'complete';
+      
+    } catch (error) {
+      loadingState.value.phase = 'error';
+      loadingState.value.errorMessage = error.message;
+    }
+  };
+  
+  return {
+    loadingState,
+    startDataLoading,
+    retryLoading: startDataLoading,
+    resetLoading: () => {
+      loadingState.value = {
+        phase: 'checking',
+        totalCategories: 0,
+        loadedCategories: 0,
+        categories: [],
+        overallProgress: 0
+      };
+    }
+  };
+}
+```
+
+## VITE CONFIGURATION RULES
+
+- **Port Configuration:** The Vite dev server port must be configured to 6161 by adding a `server` block to `vite.config.ts`.
+
+```typescript
+server: {
+  port: 6161
+}
+```
+
+## INDEXEDDB IMPLEMENTATION PLAN
+
+### Implementation Architecture
+
+The implementation will follow a hybrid approach, utilizing Dexie.js for IndexedDB interaction and building a data service layer on top.
+
+**Technical Architecture Layers:**
+1. **Database Layer:** Dexie.js + Database schema design.
+2. **Service Layer:** Data CRUD operations, cache management, version control.
+3. **Transformation Layer:** Bidirectional transformation between raw and application data.
+4. **State Layer:** Vue Composition API integration, reactive state management.
+5. **UI Layer:** Loading status display, error handling, user interaction.
+
+### Core Modules
+
+1. **Database Module** (`src/services/database/`): Contains database schema and initialization.
+2. **Cache Management Module** (`src/services/cache/cacheManager.ts`): Handles cache versioning and data checks.
+3. **Data Transformation Module** (`src/utils/dataTransform.ts`): Provides utilities for data conversion.
+4. **Loading Management Module** (`src/composables/useDataLoading.ts`): Manages data loading states.
+5. **Storage Service Module** (`src/services/storage/interviewStorage.ts`): Implements CRUD operations for interview data.
+6. **IndexedDB Hook** (`src/composables/useIndexedDB.ts`): Encapsulates IndexedDB operations within a Vue composable function.
+7. **Script Loader Module** (`src/services/loader/scriptLoader.ts`): Handles dynamic script loading.
+8. **Data Service Module** (`src/services/interviewDataService.ts`): Integrates script loading, IndexedDB operations, and cache management.
+9. **Data Source Configuration** (`src/config/dataSourceConfig.ts`): Defines data source configurations.
+
+### Database Schema
+
+```typescript
+// Categories table: Stores category information
+interface CategoryRecord {
+  id: string;
+  name: string;
+  description?: string;
+  questionCount: number;
+  icon?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Questions table: Stores question information
+interface QuestionRecord {
+  id: string;
+  categoryId: string;
+  subject: string;
+  answer: string;
+  readCount: number;
+  createTime: Date;
+  updateTime: Date;
+  isCollected: boolean;
+  isEdited: boolean;
+  editedAt?: Date;
+  originalSubject?: string;
+  originalAnswer?: string;
+}
+
+// UserEdits table: Stores user edit records
+interface UserEditRecord {
+  id: string;
+  questionId: string;
+  editedSubject: string;
+  editedAnswer: string;
+  editedAt: Date;
+  editType: 'subject' | 'answer' | 'both';
+}
+
+// AppCache table: Stores application cache and metadata
+interface AppCacheRecord {
+  key: string;
+  data: any;
+  version: string;
+  lastUpdated: Date;
+  expiresAt?: Date;
+}
+```
+
+### Caching Strategy
+
+- **Cache Check Process:**
+    1. Check if cached data exists in IndexedDB.
+    2. Validate cache version and expiration time.
+    3. Decide whether to use cache or reload data.
+
+- **Data Synchronization Strategy:**
+    1. Use local cache data first.
+    2. Check remote data version in the background.
+    3. Incrementally synchronize new data if updates are available.
+    4. Preserve user-edited content from being overwritten.
+
+### Performance Optimization
+
+- **Paging Loading:**
+    - Load 50-100 questions per page.
+    - Support infinite scrolling to load more data.
+    - Smartly pre-load data for adjacent categories.
+
+- **Memory Management:**
+    - Clean up unused data references promptly.
+    - Use WeakMap to manage temporary objects.
+    - Periodically clean up expired cache.
+
+### Implementation Checklist
+
+1.  Install Dexie.js dependency to the project.
+2.  Create database schema definition file (`src/services/database/schema.ts`).
+3.  Implement Dexie database instance and initialization logic (`src/services/database/index.ts`).
+4.  Create a cache manager and implement version checking and caching strategies (`src/services/cache/cacheManager.ts`).
+5.  Implement a question bank data storage service, including CRUD operations (`src/services/storage/interviewStorage.ts`).
+6.  Create data conversion utility functions to handle raw data format conversion (`src/utils/dataTransform.ts`).
+7.  Implement a data loading status management composable function (`src/composables/useDataLoading.ts`).
+8.  Create a Vue composable function to encapsulate IndexedDB operations (`src/composables/useIndexedDB.ts`).
+9.  Supplement storage-related TypeScript type definitions (`src/types/storage.ts`).
+10. Integrate IndexedDB functionality into the existing `useInterviewBank` composable function.
+11. Implement dynamic script loading functionality (`src/services/loader/scriptLoader.ts`).
+12. Create a data service layer to integrate data loading, caching, and IndexedDB operations (`src/services/interviewDataService.ts`).
+13. Implement data source configuration (`src/config/dataSourceConfig.ts`).
+14. Test data storage, retrieval, and update functions.
+15. Verify caching strategies and data synchronization mechanisms.
+16. Perform performance testing and optimization adjustments.
+
+## DATA STORAGE STRATEGY
+
+**Three-Layer Cache Architecture:**
+
+-   **L1 Cache:** In-memory reactive data (Vue reactive).
+-   **L2 Cache:** IndexedDB persistent storage.
+-   **L3 Cache:** Remote data source (JSON file/API).
+
+## DATA ACCESS AND EDITING RULES
+
+- **Cache Expiry:** The cache validity period is set to 1 month (30 days).
+#### 2025-06-07 cache validity period
+
+The cache validity period is set to 1 month (30 days).
+
+### Implementation Checklist:
+
+1. Install Dexie.js dependency to package.json
+2. Create storage related TypeScript type definition file
+3. Design and implement Dexie database Schema definition
+4. Create database instance and initialization logic
+5. Implement cache manager, including version control and validity checking
+6. Develop Script dynamic loader, support concurrency and error handling
+7. Create data format conversion tool functions
+8. Implement data loading status management Hook
+9. Develop IndexedDB operation encapsulation Hook
+10. Create data service layer, integrate all underlying services
+11. Create data source configuration file
+12. Reconstruct useInterviewBank Hook, integrate IndexedDB function
+13. Test data loading process integrity
+14. Test user editing function's IndexedDB integration
+15. Verify cache strategy and performance
+
+#### 2024-12-30 IndexedDB重构 步骤1-5
+*   Step: IndexedDB架构基础设施建设 (步骤1-5)
+*   Modifications:
+    - 确认package.json中已存在dexie依赖
+    - 创建src/types/storage.ts，定义完整的IndexedDB存储类型系统
+    - 创建src/services/database/schema.ts，定义Dexie数据库Schema和版本控制
+    - 创建src/services/database/index.ts，实现Dexie数据库实例的创建和导出
+    - 创建src/services/cache/cacheManager.ts，实现缓存管理器（待完善数据库集成）
+*   Change Summary: 完成IndexedDB基础架构，缓存有效期设置为30天，建立了完整的类型系统和数据库Schema
+*   Reason: 执行计划步骤1-5，调整数据获取方式为script加载+IndexedDB存储
+*   Blockers: 无
+
+#### 2024-12-30 IndexedDB重构 步骤6-9
+*   Step: 数据服务层整合 (步骤6-9)
+*   Modifications:
+    - 创建完整的Script动态加载器 (`src/services/loader/scriptLoader.ts`) - 支持并发控制、超时处理、错误重试、进度回调
+    - 完成数据格式转换工具函数 (`src/utils/dataTransform.ts`) - 处理原始JSON到应用格式的双向转换，包含数据验证逻辑
+    - 实现数据加载状态管理Hook (`src/composables/useDataLoading.ts`) - 支持脚本加载进度跟踪、错误处理、重试机制
+    - 开发IndexedDB操作封装Hook (`src/composables/useIndexedDB.ts`) - 提供CRUD操作和事务管理
+*   Change Summary: 完成数据服务层整合，具备完整的数据加载、转换、存储、管理能力。
+*   Reason: 执行计划步骤6-9，完成数据服务层整合
+*   Blockers: 需要修复一些导入路径问题（`cacheManager`、`dataSourceManager`导出）
+
+#### 2025-06-07 Adjust Data Retrieval and Editing Methods
+-   The data retrieval method should use script loading data and store it in indexdb.
+-   Editing submissions should directly edit the data in indexdb.
+
+#### 2025-06-07 Database Instance Export
+-   The database instance must be created and exported in `src/services/database/index.ts`.
+-   The `src/services/database/index.ts` should export the database instance `db`, database initialization, clearing, and status check functions. It should also re-export relevant types and constants from `./schema.ts`.
+```typescript
+// 数据库实例导出文件 - 提供统一的数据库访问接口
++ 
++ import { InterviewBankDatabase, initializeDatabase, clearDatabase, getDatabaseStatus } from './schema'
++ 
++ // ==================== 数据库实例 ====================
++ 
++ // 创建数据库实例
++ export const db = new InterviewBankDatabase()
++ 
++ // ==================== 数据库初始化 ====================
++ 
++ // 初始化数据库
++ export const initDB = initializeDatabase
++ 
++ // 清空数据库
++ export const clearDB = clearDatabase
++ 
++ // 获取数据库状态
++ export const getDBStatus = getDatabaseStatus
++ 
++ // ==================== 数据库工具函数 ====================
++ 
++ export async function isDBReady(): Promise<boolean> {
++   try {
++     await db.open()
++     return true
++   } catch (error) {
++     console.error('数据库连接失败:', error)
++     return false
++   }
++ }
++ 
++ // ==================== 默认导出 ====================
++ 
++ export default db
++ 
++ // ==================== 重新导出类型 ====================
++ 
++ export type { DatabaseSchema } from './schema'
++ export { TABLES, DATABASE_CONFIG } from './schema'
+```
+
+#### 2025-06-07 Update Script Loading to use Fetch API with Timeout
+- The `attemptScriptLoad` method in `src/services/loader/scriptLoader.ts` must be updated to use the Fetch API instead of dynamic script tags for loading JSON data.
+- A timeout mechanism using `AbortController` must be implemented for the Fetch API requests.
+```typescript
+    ): Promise<ScriptLoadResult> {
+      const url = this.ossDataUrl + config.scriptUrl;
+      const timeout = config.timeout || this.config.loadingConfig.timeout;
+
+      try {
+        // 创建 AbortController 用于超时控制
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (!data) {
+          throw new Error(`数据为空: ${config.categoryName}`);
+        }
+
+        if (!Array.isArray(data)) {
+          throw new Error(`数据格式错误: ${config.categoryName} 不是数组`);
+        }
+
+        return {
+          categoryId: config.categoryId,
+          categoryName: config.categoryName,
+          data: data as OriginalQuestionData[],
+          questionsCount: data.length,
+        };
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error(`加载超时: ${config.categoryName} (${timeout}ms)`);
+        }
