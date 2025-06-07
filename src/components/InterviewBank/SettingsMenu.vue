@@ -1,7 +1,7 @@
 <template>
   <div class="flex items-center">
     <!-- 设置菜单下拉框 -->
-    <div class="dropdown dropdown-end">
+    <div class="dropdown dropdown-content">
       <div tabindex="0" role="button" class="btn btn-ghost btn-circle" title="设置">
         <svg
           width="20"

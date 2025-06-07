@@ -491,37 +491,27 @@ export class DataTransformer {
 
   // 私有辅助方法
 
+  private readonly categoryIdNameMap: Record<number, string> = {
+    18: '中软软件测试面试题',
+    17: '字节软件测试面试题',
+    16: '华为软件测试面试题',
+    14: 'HR面试题',
+    15: '性能测试面试题',
+    7: 'APP自动化测试',
+    6: '接口自动化测试',
+    5: 'web自动化测试',
+    12: 'pythone基础',
+    11: '接口测试工具',
+    13: 'Linux服务器',
+    10: '数据库面试题'
+  };
+
   /**
-   * 根据分类ID和题目内容推断分类名称
+   * 根据分类ID获取分类名称
    * @deprecated 应该使用数据源配置中的 categoryName，此方法仅作为后备方案
    */
   private inferCategoryName(categoryId: string, question: Question): string {
-    const subject = question.subject.toLowerCase();
-
-    // 根据题目内容关键词推断分类
-    if (subject.includes("linux") || subject.includes("unix")) {
-      return "Linux题";
-    } else if (subject.includes("python")) {
-      return "Python题";
-    } else if (subject.includes("java")) {
-      return "Java题";
-    } else if (subject.includes("javascript") || subject.includes("js")) {
-      return "JavaScript题";
-    } else if (subject.includes("vue") || subject.includes("react")) {
-      return "前端框架题";
-    } else if (
-      subject.includes("数据库") ||
-      subject.includes("sql") ||
-      subject.includes("mysql")
-    ) {
-      return "数据库题";
-    } else if (subject.includes("算法") || subject.includes("数据结构")) {
-      return "算法题";
-    } else if (subject.includes("华为") || subject.includes("软件测试")) {
-      return "华为软件测试题";
-    } else {
-      return `分类${categoryId}`;
-    }
+    return this.categoryIdNameMap[Number(categoryId)] || `分类${categoryId}`;
   }
 
   /**
@@ -536,7 +526,18 @@ export class DataTransformer {
       前端框架题: "⚛️",
       数据库题: "🗃️",
       算法题: "🧮",
-      华为软件测试题: "🏢",
+      华为软件测试面试题: "🏢",
+      中软软件测试面试题: "🏗️",
+      字节软件测试面试题: "🎯",
+      HR面试题: "👥",
+      性能测试面试题: "📊",
+      APP自动化测试: "📱",
+      接口自动化测试: "🔌",
+      web自动化测试: "🌐",
+      pythone基础: "🐍",
+      接口测试工具: "🔧",
+      Linux服务器: "🖥️",
+      数据库面试题: "💾"
     };
 
     return iconMap[categoryName] || "📝";
