@@ -1,0 +1,23 @@
+---
+description: AI rules derived by SpecStory from the project AI interaction history
+globs: *
+---
+
+## HEADERS
+
+## PROJECT RULES
+
+## CODING STANDARDS
+
+## WORKFLOW & RELEASE RULES
+
+## TECH STACK
+- tailwindcss: ^4.1.8 (existing, may need update)
+- daisyui: ^5.0.43 (existing, may need update)
+
+## PROJECT DOCUMENTATION & CONTEXT SYSTEM
+
+## DEBUGGING
+
+## REFERENCES
+- tailwindcss installation: https://tailwindcss.com/docs/installation/using-vite
