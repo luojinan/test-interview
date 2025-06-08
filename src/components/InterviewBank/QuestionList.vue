@@ -47,7 +47,6 @@
             </div>
             <ul tabindex="0" class="dropdown-content menu bg-base-200 rounded-box z-[1] w-40 p-2 shadow">
               <li><a @click="handleSort('id')">按编号</a></li>
-              <li><a @click="handleSort('readCount')">按阅读量</a></li>
               <li><a @click="handleSort('createTime')">按创建时间</a></li>
               <li><a @click="handleSort('updateTime')">按更新时间</a></li>
             </ul>
@@ -109,7 +108,7 @@ const emit = defineEmits<{
 }>()
 
 // 排序状态
-const sortBy = ref<'id' | 'readCount' | 'createTime' | 'updateTime'>('id')
+const sortBy = ref<'id' | 'createTime' | 'updateTime'>('id')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 
 // 排序后的题目列表
@@ -122,10 +121,6 @@ const sortedQuestions = computed(() => {
       case 'id':
         aValue = parseInt(a.id)
         bValue = parseInt(b.id)
-        break
-      case 'readCount':
-        aValue = a.readCount
-        bValue = b.readCount
         break
       case 'createTime':
         aValue = a.createTime.getTime()
@@ -198,14 +193,14 @@ const getViewDescription = () => {
 }
 
 // 处理排序
-const handleSort = (field: 'id' | 'readCount' | 'createTime' | 'updateTime') => {
+const handleSort = (field: 'id' | 'createTime' | 'updateTime') => {
   if (sortBy.value === field) {
     // 切换排序顺序
     sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
   } else {
     // 切换排序字段
     sortBy.value = field
-    sortOrder.value = field === 'readCount' ? 'desc' : 'asc' // 阅读量默认降序
+    sortOrder.value = 'asc' // 阅读量默认降序
   }
 }
 

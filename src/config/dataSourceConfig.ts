@@ -11,6 +11,15 @@ export interface DataSourceEnvironment {
 // ==================== 默认数据源配置 ====================
 
 export const DEFAULT_DATA_SOURCES: Record<string, ScriptConfig> = {
+  'test-basic': {
+    categoryId: 'test-basic',
+    scriptUrl: '/data/interviews/test-basie.min.json',
+    globalVarName: 'TEST_BASIC_DATA',
+    categoryName: '软件测试基础',
+    priority: 13,
+    essential: true,
+    timeout: 15000
+  },
   'zhongruan-software-testing-interview': {
     categoryId: 'zhongruan-software-testing-interview',
     scriptUrl: '/data/interviews/zhongruan-software-testing-interview.min.js',

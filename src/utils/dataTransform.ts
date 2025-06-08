@@ -362,11 +362,6 @@ export class DataTransformer {
       return false;
     }
 
-    // 数值验证
-    if (typeof question.readCount !== "number" || question.readCount < 0) {
-      return false;
-    }
-
     // 日期验证
     if (
       !(question.createTime instanceof Date) ||
@@ -503,7 +498,8 @@ export class DataTransformer {
     12: 'pythone基础',
     11: '接口测试工具',
     13: 'Linux服务器',
-    10: '数据库面试题'
+    10: '数据库面试题',
+    3: '软件测试基础'
   };
 
   /**

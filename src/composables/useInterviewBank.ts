@@ -95,7 +95,6 @@ export function useInterviewBank(): UseInterviewBankReturn {
     selectedCategoryId: "",
     theme: "auto",
     autoExpandAnswers: false,
-    showReadCount: true,
     compactMode: false,
   });
 
@@ -260,7 +259,6 @@ export function useInterviewBank(): UseInterviewBankReturn {
         "selectedCategoryId",
         "theme",
         "autoExpandAnswers",
-        "showReadCount",
         "compactMode",
       ];
 
@@ -305,17 +303,6 @@ export function useInterviewBank(): UseInterviewBankReturn {
     const question = questions.value.find((q) => q.id === questionId);
     if (question) {
       question.isExpanded = !question.isExpanded;
-
-      // 增加阅读次数
-      if (question.isExpanded) {
-        question.readCount++;
-        // 异步更新到数据库
-        interviewDataService
-          .updateQuestion(questionId, {
-            readCount: question.readCount,
-          })
-          .catch((err) => console.warn("更新阅读次数失败:", err));
-      }
     }
   }
 
