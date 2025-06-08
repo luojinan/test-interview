@@ -2,7 +2,12 @@
   <div class="flex items-center">
     <!-- daisyUI主题切换器 -->
     <div class="dropdown dropdown-end">
-      <div tabindex="0" role="button" class="btn btn-ghost btn-circle">
+      <div 
+        ref="dropdownButton"
+        tabindex="0" 
+        role="button" 
+        class="btn btn-ghost btn-circle"
+      >
         <svg
           width="20"
           height="20"
@@ -81,6 +86,9 @@ const emit = defineEmits<{
 // 当前主题
 const currentTheme = ref<'light' | 'dark' | 'auto'>(props.theme)
 
+// 下拉菜单按钮引用
+const dropdownButton = ref<HTMLElement>()
+
 // 应用主题到DOM
 const applyTheme = (theme: 'light' | 'dark' | 'auto') => {
   const html = document.documentElement
@@ -103,6 +111,18 @@ const switchTheme = (theme: 'light' | 'dark' | 'auto') => {
   
   // 保存到localStorage
   localStorage.setItem('interview_bank_theme', theme)
+  
+  // 关闭下拉菜单 - 移除焦点以关闭dropdown
+  if (dropdownButton.value) {
+    dropdownButton.value.blur()
+  }
+  
+  // 备用方法：如果上述方法不生效，使用document.activeElement.blur()
+  setTimeout(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+  }, 100)
 }
 
 // 监听系统主题变化（仅在auto模式下）

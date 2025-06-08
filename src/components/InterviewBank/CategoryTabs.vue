@@ -5,6 +5,7 @@
       <!-- 标题和主题切换 -->
       <div class="flex items-center gap-3">
         <h1 class="text-lg md:text-base font-bold text-base-content">📚 面试题库</h1>
+        <SettingsMenu @cache-cleared="handleCacheCleared" @expired-cache-cleared="handleExpiredCacheCleared" />
         <ThemeToggle @theme-change="handleThemeChange" />
       </div>
       
@@ -167,6 +168,7 @@
 import { ref, computed, nextTick } from 'vue'
 import type { Category } from '@/types/interview'
 import ThemeToggle from './ThemeToggle.vue'
+import SettingsMenu from './SettingsMenu.vue'
 
 // 定义props
 interface Props {
@@ -191,6 +193,8 @@ const emit = defineEmits<{
   viewChange: [view: 'normal' | 'bookmarks' | 'edited']
   search: [query: string]
   themeChange: [theme: 'light' | 'dark' | 'auto']
+  cacheCleared: []
+  expiredCacheCleared: []
   export: []
 }>()
 
@@ -259,6 +263,15 @@ const handleThemeChange = (theme: 'light' | 'dark' | 'auto') => {
   emit('themeChange', theme)
 }
 
+// 处理缓存清除
+const handleCacheCleared = () => {
+  emit('cacheCleared')
+}
+
+// 处理过期缓存清除
+const handleExpiredCacheCleared = () => {
+  emit('expiredCacheCleared')
+}
 // 处理数据导出
 const handleExport = () => {
   emit('export')
